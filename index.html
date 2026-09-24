@@ -83,7 +83,8 @@ main{min-width:0}
 .item.open .item-body{display:block}
 .item.open .item-head{padding-bottom:8px}
 
-.prose{max-width:72ch}
+.prose{max-width:none}
+.prose>p,.prose>ul,.prose>blockquote,.prose>h3,.prose>h4{max-width:72ch}
 .prose h3{font-size:17px;margin:22px 0 6px;padding-left:10px;border-left:3px solid var(--c)}
 .prose h4{font-size:16px;margin:16px 0 4px}
 .prose p{margin:8px 0}
@@ -100,7 +101,13 @@ main{min-width:0}
 .checks input{margin-top:6px;width:17px;height:17px;accent-color:var(--m)}
 .checks input:checked + span{color:var(--ink-2);text-decoration:line-through}
 
-.files{margin-top:18px;display:grid;gap:8px;max-width:72ch}
+.files{margin-top:18px;display:grid;gap:8px;max-width:960px}
+.pv{border:1px solid var(--rule);border-top:0;margin-top:-9px;border-radius:0 0 var(--radius) var(--radius);background:var(--sheet);padding:10px}
+.prose .embed{margin:14px 0;width:100%;max-width:960px}
+.prose .embed iframe{display:block;width:100%;height:min(80vh,820px);border:1px solid var(--rule);border-radius:var(--radius);background:#fff}
+.prose .embed .pv-foot{display:flex;justify-content:flex-end;margin-top:6px;font-size:13px}
+.pv iframe{display:block;width:100%;height:min(75vh,760px);border:1px solid var(--rule);border-radius:4px;background:#fff}
+.pv .pv-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--ink-2)}
 .file{display:flex;align-items:center;gap:10px;border:1px solid var(--rule);background:var(--sheet);padding:10px 12px;border-radius:var(--radius)}
 .ext{font-size:12px;font-weight:700;min-width:44px;text-align:center;padding:4px 0;color:#fff;background:var(--ink-2);border-radius:3px}
 .ext.pdf{background:var(--m)}.ext.img{background:var(--c)}.ext.data{background:#7A8B2E}.ext.link{background:#7A5AA8}
@@ -210,7 +217,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <div class="field">
       <label for="fBody">內容</label>
       <textarea id="fBody"></textarea>
-      <span class="hint">寫法：<code>## 小標</code>　<code>- 項目</code>　<code>- [ ] 檢核項目</code>　<code>**粗體**</code>　<code>&gt; 提醒</code>　表格用 <code>| 欄 | 欄 |</code></span>
+      <span class="hint">把雲端硬碟／Google 試算表網址或 <code>files/檔名.pdf</code> 單獨放一行，就會直接顯示預覽。<br>寫法：<code>## 小標</code>　<code>- 項目</code>　<code>- [ ] 檢核項目</code>　<code>**粗體**</code>　<code>&gt; 提醒</code>　表格用 <code>| 欄 | 欄 |</code></span>
     </div>
     <div class="field">
       <label for="fFiles">附件下載（每行一個：檔名 | 說明 | 檔案網址，說明可省略）</label>
@@ -302,7 +309,7 @@ const SEED_ARTICLES = [
 
 /* ---------- 狀態與工具 ---------- */
 const $ = s => document.querySelector(s);
-const state = { mode:"demo", fb:null, user:null, site:SEED_SITE, articles:[], cat:"all", q:"", open:new Set(), loaded:false };
+const state = { mode:"demo", fb:null, user:null, site:SEED_SITE, articles:[], cat:"all", q:"", open:new Set(), preview:new Set(), loaded:false };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtDate = t => { if(!t) return ""; const d=new Date(t); return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate(); };
 const extOf = n => { const m=String(n||"").split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/i); return m?m[1].toLowerCase():""; };
@@ -314,6 +321,25 @@ function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k)||"null"); }cat
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 function extClass(e){ if(e==="pdf") return "pdf"; if(["png","jpg","jpeg","gif","webp","svg"].includes(e)) return "img"; if(["csv","txt","md","json","xlsx","xls","docx"].includes(e)) return "data"; return ""; }
 function hostOf(u){ try{ return new URL(u, location.href).hostname.replace(/^www\./,""); }catch(e){ return ""; } }
+/* 可預覽的網址：Google 雲端硬碟／文件／試算表／簡報，或放在同網站的 PDF、圖片 */
+function previewUrl(u){
+  try{
+    const x=new URL(u, location.href);
+    if(/(^|\.)drive\.google\.com$/.test(x.hostname)){
+      let id=x.searchParams.get("id"); const m=x.pathname.match(/\/file\/d\/([\w-]+)/); if(m) id=m[1];
+      return id ? "https://drive.google.com/file/d/"+id+"/preview" : "";
+    }
+    if(x.hostname==="docs.google.com"){
+      const m=x.pathname.match(/^\/(spreadsheets|document|presentation)\/d\/([\w-]+)/);
+      if(m){
+        if(m[2].length<40) return "https://drive.google.com/file/d/"+m[2]+"/preview"; // 上傳到雲端的 Office 檔
+        return "https://docs.google.com/"+m[1]+"/d/"+m[2]+"/preview";
+      }
+    }
+    if(x.origin===location.origin && ["pdf","png","jpg","jpeg","gif","webp","svg"].includes(extOf(x.pathname))) return x.href;
+  }catch(e){}
+  return "";
+}
 function safeUrl(u){ u=String(u||"").trim(); if(/^(javascript|data|vbscript):/i.test(u)) return ""; return u; }
 
 /* 「名稱 | 說明 | 網址」拆解 */
@@ -330,6 +356,7 @@ const rowsToText = rows => (rows||[]).map(r=>(r.label?r.label+" | ":"")+(r.note?
 /* ---------- 內容排版 ---------- */
 function inline(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/`([^`]+)`/g,"<code>$1</code>"); }
 const RX_CHECK = /^- \[( |x)\] /i;
+const RX_URLLINE = /^(https?:\/\/\S+|files\/\S+)$/i;
 function render(body, artId){
   const lines = String(body||"").replace(/\r/g,"").split("\n");
   let html="", i=0, k=0;
@@ -337,6 +364,14 @@ function render(body, artId){
   while(i<lines.length){
     const L = lines[i];
     if(/^\s*$/.test(L)){ i++; continue; }
+    const T=L.trim();
+    if(RX_URLLINE.test(T)){
+      const pv=previewUrl(T);
+      html += pv
+        ? '<div class="embed"><iframe src="'+esc(pv)+'" title="文件預覽" loading="lazy"></iframe><div class="pv-foot"><a href="'+esc(pv)+'" target="_blank" rel="noopener">在新分頁開啟</a></div></div>'
+        : '<p><a href="'+esc(safeUrl(T))+'" target="_blank" rel="noopener noreferrer">'+esc(T)+'</a></p>';
+      i++; continue;
+    }
     if(L.startsWith("### ")){ html+="<h4>"+inline(L.slice(4))+"</h4>"; i++; continue; }
     if(L.startsWith("## ")){ html+="<h3>"+inline(L.slice(3))+"</h3>"; i++; continue; }
     if(L.startsWith("> ")){ const b=[]; while(i<lines.length && lines[i].startsWith("> ")){ b.push(inline(lines[i].slice(2))); i++; } html+="<blockquote>"+b.join("<br>")+"</blockquote>"; continue; }
@@ -357,7 +392,7 @@ function render(body, artId){
       clean.slice(1).forEach(r=>{ html+="<tr>"+cells(r).map(c=>"<td>"+inline(c)+"</td>").join("")+"</tr>"; });
       html+="</tbody></table></div>"; continue;
     }
-    const b=[]; while(i<lines.length && lines[i].trim() && !/^(## |### |> |- |\s*\|)/.test(lines[i])){ b.push(inline(lines[i])); i++; }
+    const b=[]; while(i<lines.length && lines[i].trim() && !/^(## |### |> |- |\s*\|)/.test(lines[i]) && !RX_URLLINE.test(lines[i].trim())){ b.push(inline(lines[i])); i++; }
     html+="<p>"+b.join("<br>")+"</p>";
   }
   return html;
@@ -386,12 +421,16 @@ function renderCats(){
   const b=$("#btnCats"); if(b) b.onclick=openCats;
   const s=$("#btnSeed"); if(s) s.onclick=importSeed;
 }
-function rowHtml(r, kind){
+function rowHtml(r, kind, key){
   const url=r.url, host=hostOf(url);
   if(kind==="file"){
     const e=extOf(url)||extOf(r.label);
+    const pv=previewUrl(url), on=pv && state.preview.has(key);
     return '<div class="file"><span class="ext '+extClass(e)+'">'+esc(e?e.toUpperCase():"檔案")+'</span><span class="fn"><span class="ln">'+esc(r.label||url)+'</span>'+(r.note?'<span class="lnote">'+esc(r.note)+'</span>':'')+'</span>'
-      +'<a class="btn small" href="'+esc(url)+'" target="_blank" rel="noopener" download>下載</a></div>';
+      +(pv?'<button class="btn small" type="button" data-pv="'+esc(key)+'" aria-expanded="'+!!on+'">'+(on?"收起預覽":"預覽")+'</button>':'')
+      +'<a class="btn small" href="'+esc(url)+'" target="_blank" rel="noopener" download>下載</a></div>'
+      +(on?'<div class="pv"><iframe src="'+esc(pv)+'" title="'+esc(r.label||"預覽")+'" loading="lazy" allow="autoplay"></iframe>'
+        +'<div class="pv-foot"><span>預覽顯示不出來時，請確認檔案共用設定為「知道連結的任何人可檢視」。</span><a href="'+esc(pv)+'" target="_blank" rel="noopener">在新分頁開啟</a></div></div>':'');
   }
   return '<div class="file"><span class="ext link">連結</span><span class="fn"><span class="ln">'+esc(r.label||host||url)+'</span>'+(r.note?'<span class="lnote">'+esc(r.note)+'</span>':'')+'<span class="lhost">'+esc(host)+'</span></span>'
     +'<button class="btn small" type="button" data-copy="'+esc(url)+'">複製網址</button><a class="btn small" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">開啟</a></div>';
@@ -418,7 +457,7 @@ function renderList(){
       +'</button>'
       +'<div class="item-body">'
         +'<div class="prose">'+(open?render(a.body,a.id):"")+'</div>'
-        +((files.length||links.length)?'<div class="files">'+files.map(f=>rowHtml(f,"file")).join("")+links.map(l=>rowHtml(l,"link")).join("")+'</div>':"")
+        +((files.length||links.length)?'<div class="files">'+files.map((f,i)=>rowHtml(f,"file",a.id+":"+i)).join("")+links.map(l=>rowHtml(l,"link")).join("")+'</div>':"")
         +(isEditor()?'<div class="item-admin"><button class="btn small" type="button" data-edit="'+esc(a.id)+'">編輯</button><button class="btn small danger" type="button" data-del="'+esc(a.id)+'">刪除</button></div>':"")
       +'</div></article>';
   }).join("");
@@ -441,6 +480,7 @@ $("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-cat]");
 let qTimer; $("#q").addEventListener("input",e=>{ clearTimeout(qTimer); qTimer=setTimeout(()=>{ state.q=e.target.value; renderList(); },150); });
 $("#list").addEventListener("click",e=>{
   const t=e.target.closest("[data-toggle]"); if(t){ const id=t.dataset.toggle; state.open.has(id)?state.open.delete(id):state.open.add(id); renderList(); return; }
+  const pv=e.target.closest("[data-pv]"); if(pv){ const k=pv.dataset.pv; state.preview.has(k)?state.preview.delete(k):state.preview.add(k); renderList(); return; }
   const cp=e.target.closest("[data-copy]"); if(cp){ copyText(cp.dataset.copy); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ openEdit(ed.dataset.edit); return; }
   const del=e.target.closest("[data-del]"); if(del){ removeArticle(del.dataset.del); return; }
